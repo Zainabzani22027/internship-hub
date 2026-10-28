@@ -707,7 +707,7 @@ The project successfully demonstrates how a full-stack web application can solve
 **Zainab Bibi**
 
 BS Computer Science  
-University of Peshawar  
+Army Burn Hall College, Affiliated with University of Peshawar  
 2023–2027
 
 InternShip Hub — Full-Stack Internship Marketplace
