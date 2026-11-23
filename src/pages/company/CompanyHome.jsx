@@ -1,8 +1,8 @@
+
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Building2,
-  LayoutDashboard,
   BriefcaseBusiness,
   Users,
   Plus,
@@ -10,6 +10,8 @@ import {
   CheckCircle,
   Clock3,
   MapPin,
+  LogOut,
+  LayoutDashboard,
 } from "lucide-react";
 import { apiGet } from "../../utils/api";
 
@@ -32,12 +34,15 @@ function CompanyHome() {
       setLoading(true);
       setError("");
 
-      const [profileResponse, internshipsResponse, applicationsResponse] =
-        await Promise.all([
-          apiGet("/company/profile"),
-          apiGet("/internships/company"),
-          apiGet("/company/applications"),
-        ]);
+      const [
+        profileResponse,
+        internshipsResponse,
+        applicationsResponse,
+      ] = await Promise.all([
+        apiGet("/companies/profile"),
+        apiGet("/internships/company"),
+        apiGet("/company/applications"),
+      ]);
 
       setCompany(
         profileResponse?.company ||
@@ -56,8 +61,13 @@ function CompanyHome() {
         applicationsResponse?.data ||
         [];
 
-      setInternships(Array.isArray(internshipList) ? internshipList : []);
-      setApplications(Array.isArray(applicationList) ? applicationList : []);
+      setInternships(
+        Array.isArray(internshipList) ? internshipList : []
+      );
+
+      setApplications(
+        Array.isArray(applicationList) ? applicationList : []
+      );
     } catch (err) {
       console.error("Company dashboard error:", err);
       setError(
@@ -68,13 +78,10 @@ function CompanyHome() {
     }
   };
 
-  const getInternshipStatus = (internship) => {
-    return String(
-      internship?.status ||
-        internship?.approval_status ||
-        internship?.approvalStatus ||
-        ""
-    ).toUpperCase();
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login", { replace: true });
   };
 
   const getApplicationStatus = (application) => {
@@ -110,12 +117,21 @@ function CompanyHome() {
   };
 
   const getLocation = (application) => {
-    return (
-      application?.city ||
-      application?.location ||
+    const city =
       application?.student_city ||
       application?.studentCity ||
       application?.student?.city ||
+      application?.city ||
+      "";
+
+    const country =
+      application?.student_country ||
+      application?.studentCountry ||
+      application?.student?.country ||
+      "";
+
+    return (
+      [city, country].filter(Boolean).join(", ") ||
       "Location not specified"
     );
   };
@@ -139,19 +155,18 @@ function CompanyHome() {
     ).toUpperCase();
   };
 
-  const activeInternships = internships.filter((internship) => {
-    const status = getInternshipStatus(internship);
+  const activeInternships = internships.filter(
+    (internship) =>
+      String(internship?.approval_status || "").toUpperCase() ===
+        "APPROVED" &&
+      String(internship?.internship_status || "").toUpperCase() ===
+        "LIVE"
+  ).length;
 
-    return (
-      status === "APPROVED" ||
-      status === "LIVE" ||
-      status === "ACTIVE"
-    );
-  }).length;
-
-  const shortlistedApplications = applications.filter((application) => {
-    return getApplicationStatus(application) === "SHORTLISTED";
-  }).length;
+  const shortlistedApplications = applications.filter(
+    (application) =>
+      getApplicationStatus(application) === "SHORTLISTED"
+  ).length;
 
   const pendingApplications = applications.filter((application) => {
     const status = getApplicationStatus(application);
@@ -245,13 +260,25 @@ function CompanyHome() {
             </div>
           </div>
 
-          <button
-            onClick={() => navigate("/company/post-internship")}
-            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-md transition hover:bg-blue-700"
-          >
-            <Plus size={20} />
-            Post Internship
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => navigate("/company/post-internship")}
+              className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white shadow-md transition hover:bg-blue-700"
+            >
+              <Plus size={20} />
+              Post Internship
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              <LogOut size={19} />
+              Logout
+            </button>
+          </div>
         </div>
 
         {/* Error */}
@@ -382,7 +409,6 @@ function CompanyHome() {
             </div>
 
             <div className="divide-y divide-slate-100">
-
               {loading ? (
                 <div className="p-8 text-center text-sm text-slate-500">
                   Loading applications...
@@ -406,8 +432,7 @@ function CompanyHome() {
                 recentApplications.map((application) => {
                   const name = getApplicationName(application);
                   const rawStatus = getApplicationStatus(application);
-                  const displayStatus =
-                    getDisplayStatus(rawStatus);
+                  const displayStatus = getDisplayStatus(rawStatus);
 
                   return (
                     <div
@@ -418,7 +443,6 @@ function CompanyHome() {
                       className="p-5 transition hover:bg-slate-50"
                     >
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
                         <div className="flex items-start gap-4">
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
                             {name.charAt(0).toUpperCase()}
@@ -448,13 +472,11 @@ function CompanyHome() {
                         >
                           {displayStatus}
                         </span>
-
                       </div>
                     </div>
                   );
                 })
               )}
-
             </div>
           </div>
 
@@ -469,7 +491,6 @@ function CompanyHome() {
             </p>
 
             <div className="mt-5 space-y-3">
-
               <button
                 onClick={() => navigate("/company/post-internship")}
                 className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
@@ -545,7 +566,6 @@ function CompanyHome() {
                   </p>
                 </div>
               </button>
-
             </div>
           </div>
         </div>

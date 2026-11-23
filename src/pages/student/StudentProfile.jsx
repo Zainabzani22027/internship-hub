@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FiCamera,
   FiCheckCircle,
@@ -15,6 +15,7 @@ import {
   apiGet,
   apiPut,
   apiUpload,
+  API_BASE_URL,
 } from "../../utils/api";
 
 function StudentProfile() {
@@ -45,6 +46,10 @@ function StudentProfile() {
   const [cvUploading, setCvUploading] = useState(false);
   const [cvError, setCvError] = useState("");
   const [cvSuccess, setCvSuccess] = useState("");
+
+  const [profileImageUrl, setProfileImageUrl] = useState("");
+  const [imageUploading, setImageUploading] = useState(false);
+  const profileImageInputRef = useRef(null);
 
   const [profileCompletion, setProfileCompletion] =
     useState(0);
@@ -106,15 +111,15 @@ function StudentProfile() {
         student.cv_url || ""
       );
 
-      if (student.cv_url) {
-        const urlParts =
-          student.cv_url.split("/");
+      setProfileImageUrl(
+        student.profile_image_url || ""
+      );
 
-        setCvName(
-          urlParts[
-            urlParts.length - 1
-          ] || "CV uploaded"
-        );
+      if (student.cv_url) {
+  const safeName = (student.full_name || profile.name || "Student").trim().replace(/\s+/g, "_");
+  const ext = student.cv_url.split(".").pop().split("?")[0] || "pdf";
+  setCvName(`${safeName}_CV.${ext}`)
+
       } else {
         setCvName("");
       }
@@ -272,7 +277,7 @@ function StudentProfile() {
 
       const data =
         await apiUpload(
-          "/student/profile/cv",
+          "/students/profile/cv",
           formData
         );
 
@@ -309,6 +314,53 @@ function StudentProfile() {
     }
   };
 
+  const getAssetUrl = (fileUrl) => {
+    if (!fileUrl) return "";
+    if (/^https?:\/\//i.test(fileUrl)) return fileUrl;
+    const apiOrigin = API_BASE_URL.replace(/\/api\/?$/, "");
+    return `${apiOrigin}${fileUrl.startsWith("/") ? "" : "/"}${fileUrl}`;
+  };
+
+  const handleProfileImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please choose a JPG, PNG or WEBP image.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      setError("Profile image must be 3 MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      setImageUploading(true);
+      setError("");
+      setSuccess("");
+
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const data = await apiUpload("/students/profile/image", formData);
+      if (!data.success || !data.imageUrl) {
+        throw new Error(data.message || "Unable to upload profile image.");
+      }
+
+      setProfileImageUrl(data.imageUrl);
+      setSuccess(data.message || "Profile image updated successfully.");
+    } catch (uploadError) {
+      setError(uploadError.message || "Unable to upload profile image.");
+    } finally {
+      setImageUploading(false);
+      event.target.value = "";
+    }
+  };
+
   /*
   |--------------------------------------------------------------------------
   | VIEW CV
@@ -318,10 +370,7 @@ function StudentProfile() {
   const handleViewCV = () => {
     if (!cvUrl) return;
 
-    const fullUrl =
-      cvUrl.startsWith("http")
-        ? cvUrl
-        : `http://localhost:5000${cvUrl}`;
+    const fullUrl = getAssetUrl(cvUrl);
 
     window.open(
       fullUrl,
@@ -389,6 +438,8 @@ function StudentProfile() {
             skills,
             cvUrl:
               cvUrl || null,
+            profileImageUrl:
+              profileImageUrl || null,
           }
         );
 
@@ -560,32 +611,39 @@ function StudentProfile() {
 
             <div className="relative mx-auto h-28 w-28">
 
-              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-purple-100 text-3xl font-bold text-[#2563EB]">
+              {profileImageUrl ? (
+                <img
+                  src={getAssetUrl(profileImageUrl)}
+                  alt="Student profile"
+                  className="h-28 w-28 rounded-full border-4 border-white object-cover shadow-sm"
+                />
+              ) : (
+                <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-blue-100 to-purple-100 text-3xl font-bold text-[#2563EB]">
+                  {(profile.name || "Student")
+                    .split(" ")
+                    .map((name) => name.charAt(0))
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </div>
+              )}
 
-                {(profile.name ||
-                  "Student")
-                  .split(" ")
-                  .map(
-                    (name) =>
-                      name.charAt(0)
-                  )
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-
-              </div>
+              <input
+                ref={profileImageInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleProfileImageChange}
+              />
 
               <button
                 type="button"
-                onClick={() =>
-                  alert(
-                    "Profile photo upload will be connected later."
-                  )
-                }
-                className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full border-4 border-white bg-[#2563EB] text-white shadow-md transition hover:bg-blue-700"
+                disabled={imageUploading}
+                onClick={() => profileImageInputRef.current?.click()}
+                className="absolute bottom-0 right-0 flex h-9 w-9 items-center justify-center rounded-full border-4 border-white bg-[#2563EB] text-white shadow-md transition hover:bg-blue-700 disabled:opacity-60"
                 title="Change profile photo"
               >
-                <FiCamera className="text-sm" />
+                {imageUploading ? "…" : <FiCamera className="text-sm" />}
               </button>
 
             </div>

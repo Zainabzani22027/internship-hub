@@ -9,7 +9,6 @@ import {
   FaEdit,
   FaGlobe,
   FaSearch,
-  FaTrash,
 } from "react-icons/fa";
 
 import { apiGet, apiPut } from "../../utils/api";
@@ -42,37 +41,33 @@ function ManageCompanies() {
       setLoading(true);
       setError("");
 
-      const data = await apiGet(
-        "/admin/company-verifications"
-      );
+      const data = await apiGet("/admin/companies");
 
-      const verificationList =
-        Array.isArray(data.verifications)
-          ? data.verifications
-          : [];
+      const companyList = Array.isArray(data.companies)
+        ? data.companies
+        : [];
 
-      const formattedCompanies =
-        verificationList.map((company) => {
-          const rawStatus =
-            company.status ||
-            company.verification_status ||
-            "PENDING";
+      const formattedCompanies = companyList.map((company) => {
+          const requestStatus = String(
+            company.verification_request_status || ""
+          ).toUpperCase();
+          const companyStatus = String(
+            company.verification_status || ""
+          ).toUpperCase();
 
-          let status = "Pending";
-
-          if (rawStatus === "VERIFIED") {
+          let status = "Not Submitted";
+          if (requestStatus === "VERIFIED" || companyStatus === "VERIFIED") {
             status = "Verified";
-          } else if (rawStatus === "REJECTED") {
+          } else if (requestStatus === "REJECTED" || companyStatus === "REJECTED") {
             status = "Rejected";
+          } else if (requestStatus === "PENDING") {
+            status = "Pending";
           }
 
           return {
-            id:
-              company.verification_id ||
-              company.id,
-
-            companyId:
-              company.company_id,
+            id: company.company_id,
+            verificationId: company.verification_id || null,
+            companyId: company.company_id,
 
             name:
               company.company_name ||
@@ -108,21 +103,18 @@ function ManageCompanies() {
             status,
 
             joined:
-              company.submitted_at
-                ? new Date(
-                    company.submitted_at
-                  ).toLocaleDateString(
-                    "en-US",
-                    {
-                      month: "short",
-                      day: "2-digit",
-                      year: "numeric",
-                    }
-                  )
+              company.created_at
+                ? new Date(company.created_at).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "2-digit",
+                    year: "numeric",
+                  })
                 : "—",
 
-            verificationType:
-              company.verification_type || "",
+            verificationType: company.verification_type || "",
+            documentUrl: company.document_url || "",
+            evidenceText: company.evidence_text || "",
+            adminNote: company.admin_note || "",
           };
         });
 
@@ -306,16 +298,6 @@ function ManageCompanies() {
     } finally {
       setActionLoading(null);
     }
-  };
-
-  // ================================
-  // DELETE
-  // ================================
-
-  const deleteCompany = () => {
-    window.alert(
-      "Company deletion is not connected yet because no confirmed delete endpoint exists in the backend."
-    );
   };
 
   // ================================
@@ -632,12 +614,10 @@ function ManageCompanies() {
                     (company) => {
 
                       const isActionLoading =
-                        actionLoading ===
-                        company.id;
+                        actionLoading === company.verificationId;
 
                       const isEditLoading =
-                        actionLoading ===
-                        `edit-${company.id}`;
+                        actionLoading === `edit-${company.id}`;
 
                       return (
                         <tr
@@ -706,31 +686,53 @@ function ManageCompanies() {
 
                             <span
                               className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${
-                                company.status ===
-                                "Verified"
+                                company.status === "Verified"
                                   ? "bg-green-50 text-green-600"
-                                  : company.status ===
-                                    "Pending"
+                                  : company.status === "Pending"
                                     ? "bg-amber-50 text-amber-600"
-                                    : "bg-red-50 text-red-600"
+                                    : company.status === "Rejected"
+                                      ? "bg-red-50 text-red-600"
+                                      : "bg-slate-100 text-slate-600"
                               }`}
                             >
 
                               <span
                                 className={`h-2 w-2 rounded-full ${
-                                  company.status ===
-                                  "Verified"
-                                    ? "bg-green-500"
-                                    : company.status ===
-                                      "Pending"
-                                      ? "bg-amber-500"
-                                      : "bg-red-500"
+                                  company.status === "Verified"
+                                  ? "bg-green-500"
+                                  : company.status === "Pending"
+                                    ? "bg-amber-500"
+                                    : company.status === "Rejected"
+                                      ? "bg-red-500"
+                                      : "bg-slate-400"
                                 }`}
                               />
 
                               {company.status}
 
                             </span>
+                            {company.verificationType && (
+                              <p className="mt-2 text-xs text-slate-500">
+                                Method: {company.verificationType}
+                              </p>
+                            )}
+                            {company.documentUrl && (
+                              <a
+                                href={company.documentUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-block text-xs font-semibold text-blue-600 hover:underline"
+                              >
+                                Open evidence
+                              </a>
+                            )}
+                            {company.evidenceText && (
+                              <p className="mt-1 max-w-xs text-xs text-slate-500" title={company.evidenceText}>
+                                {company.evidenceText.length > 90
+                                  ? `${company.evidenceText.slice(0, 90)}...`
+                                  : company.evidenceText}
+                              </p>
+                            )}
 
                           </td>
 
@@ -742,8 +744,7 @@ function ManageCompanies() {
 
                               {/* Pending */}
 
-                              {company.status ===
-                                "Pending" && (
+                              {company.status === "Pending" && company.verificationId && (
                                 <>
                                   <button
                                     type="button"
@@ -752,7 +753,7 @@ function ManageCompanies() {
                                     }
                                     onClick={() =>
                                       updateStatus(
-                                        company.id,
+                                        company.verificationId,
                                         "VERIFIED"
                                       )
                                     }
@@ -773,7 +774,7 @@ function ManageCompanies() {
                                     }
                                     onClick={() =>
                                       updateStatus(
-                                        company.id,
+                                        company.verificationId,
                                         "REJECTED"
                                       )
                                     }
@@ -787,58 +788,6 @@ function ManageCompanies() {
                                     )}
                                   </button>
                                 </>
-                              )}
-
-                              {/* Rejected */}
-
-                              {company.status ===
-                                "Rejected" && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    isActionLoading
-                                  }
-                                  onClick={() =>
-                                    updateStatus(
-                                      company.id,
-                                      "VERIFIED"
-                                    )
-                                  }
-                                  title="Verify Company"
-                                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {isActionLoading ? (
-                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                  ) : (
-                                    <FaCheckCircle />
-                                  )}
-                                </button>
-                              )}
-
-                              {/* Verified */}
-
-                              {company.status ===
-                                "Verified" && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    isActionLoading
-                                  }
-                                  onClick={() =>
-                                    updateStatus(
-                                      company.id,
-                                      "REJECTED"
-                                    )
-                                  }
-                                  title="Reject Company"
-                                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {isActionLoading ? (
-                                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                                  ) : (
-                                    <FaBan />
-                                  )}
-                                </button>
                               )}
 
                               {/* Edit */}
@@ -861,21 +810,6 @@ function ManageCompanies() {
                                 ) : (
                                   <FaEdit />
                                 )}
-                              </button>
-
-                              {/* Delete */}
-
-                              <button
-                                type="button"
-                                title="Delete Company"
-                                onClick={() =>
-                                  deleteCompany(
-                                    company.id
-                                  )
-                                }
-                                className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
-                              >
-                                <FaTrash />
                               </button>
 
                             </div>
@@ -944,6 +878,14 @@ function ManageCompanies() {
               </p>
 
               <div className="mt-4 flex flex-wrap gap-2">
+
+                <span className="rounded-full bg-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700">
+                  Not Submitted
+                </span>
+
+                <span className="text-slate-400">
+                  →
+                </span>
 
                 <span className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-bold text-amber-700">
                   Pending

@@ -181,6 +181,25 @@ function Applications() {
     }
   };
 
+  const markCompleted = async (application) => {
+    try {
+      setUpdatingId(application.id);
+      setError("");
+      await apiPut(`/company/applications/${application.id}/complete`, {});
+      setApplications((current) =>
+        current.map((item) =>
+          item.id === application.id
+            ? { ...item, internship_completed_at: new Date().toISOString() }
+            : item
+        )
+      );
+    } catch (err) {
+      setError(err.message || "Unable to mark internship completed.");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   const filteredApplications =
     applications.filter((application) => {
       const query = search
@@ -556,6 +575,28 @@ function Applications() {
                           </button>
                         )}
 
+
+                        {/* MARK INTERNSHIP COMPLETED */}
+                        {status === "Selected" && (
+                          application.internship_completed_at ? (
+                            <span className="rounded-lg bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-700">
+                              Internship Completed
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={updatingId === application.id}
+                              onClick={() => {
+                                if (window.confirm("Confirm that this student's internship has actually been completed?")) {
+                                  markCompleted(application);
+                                }
+                              }}
+                              className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                            >
+                              {updatingId === application.id ? "Saving..." : "Mark Completed"}
+                            </button>
+                          )
+                        )}
 
                         {/* REJECT */}
                         {status !==

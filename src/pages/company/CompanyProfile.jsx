@@ -9,7 +9,7 @@ import {
   Save,
 } from "lucide-react";
 
-import { apiGet, apiPut } from "../../utils/api";
+import { apiGet, apiPost, apiPut } from "../../utils/api";
 
 function CompanyProfile() {
   const [formData, setFormData] = useState({
@@ -27,11 +27,15 @@ function CompanyProfile() {
   const [verificationStatus, setVerificationStatus] =
     useState("PENDING");
 
-  const [verificationMethod, setVerificationMethod] =
-    useState("Official Company Website");
+  const [verificationMethod, setVerificationMethod] = useState("");
+  const [verificationType, setVerificationType] = useState("WEBSITE");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [evidenceText, setEvidenceText] = useState("");
+  const [verificationRecord, setVerificationRecord] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [verificationSubmitting, setVerificationSubmitting] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -46,7 +50,7 @@ function CompanyProfile() {
       setError("");
       setSuccess("");
 
-      const data = await apiGet("/company/profile");
+      const data = await apiGet("/companies/profile");
 
       const company = data.company || data.profile || data;
 
@@ -57,8 +61,8 @@ function CompanyProfile() {
           "",
 
         email:
-          company.email ||
           company.official_email ||
+          company.email ||
           "",
 
         website:
@@ -99,11 +103,29 @@ function CompanyProfile() {
           "PENDING"
       );
 
-      setVerificationMethod(
-        company.verificationMethod ||
-          company.verification_method ||
-          "Official Company Website"
-      );
+      try {
+        const verificationData = await apiGet("/companies/verification");
+        const verificationList = Array.isArray(verificationData.verifications)
+          ? verificationData.verifications
+          : [];
+        const latestVerification = verificationList[0] || null;
+
+        setVerificationRecord(latestVerification);
+        if (latestVerification) {
+          setVerificationType(latestVerification.verification_type || "WEBSITE");
+          setDocumentUrl(latestVerification.document_url || "");
+          setEvidenceText(latestVerification.evidence_text || "");
+          setVerificationStatus(latestVerification.status || company.verification_status || "PENDING");
+          setVerificationMethod(latestVerification.verification_type || "");
+        } else {
+          setVerificationRecord(null);
+          setVerificationStatus(company.verification_status || "NOT_SUBMITTED");
+          setVerificationMethod("");
+          setDocumentUrl(company.website || "");
+        }
+      } catch (verificationError) {
+        console.error("Load company verification error:", verificationError);
+      }
     } catch (err) {
       console.error(
         "Load company profile error:",
@@ -127,6 +149,10 @@ function CompanyProfile() {
       [name]: value,
     }));
 
+    if (name === "website" && verificationType === "WEBSITE") {
+      setDocumentUrl(value);
+    }
+
     setSuccess("");
     setError("");
   };
@@ -140,22 +166,23 @@ function CompanyProfile() {
       setSuccess("");
 
       const data = await apiPut(
-        "/company/profile",
+        "/companies/profile",
         {
           companyName: formData.companyName,
-          email: formData.email,
+          officialEmail: formData.email,
           website: formData.website,
           country: formData.country,
           city: formData.city,
           industry: formData.industry,
-          size: formData.size,
-          linkedin: formData.linkedin,
+          companySize: formData.size,
+          linkedinUrl: formData.linkedin,
           description: formData.description,
         }
       );
 
       const company =
         data.company ||
+        data.profile?.company ||
         data.profile ||
         null;
 
@@ -167,8 +194,8 @@ function CompanyProfile() {
             formData.companyName,
 
           email:
-            company.email ||
             company.official_email ||
+            company.email ||
             formData.email,
 
           website:
@@ -235,9 +262,56 @@ function CompanyProfile() {
     }
   };
 
+  const handleSubmitVerification = async () => {
+    if (!documentUrl.trim() && !evidenceText.trim()) {
+      setError("Please provide a verification document URL or supporting evidence.");
+      setSuccess("");
+      return;
+    }
+
+    try {
+      setVerificationSubmitting(true);
+      setError("");
+      setSuccess("");
+
+      // Save the latest company details first so Admin reviews current information.
+      await apiPut("/companies/profile", {
+        companyName: formData.companyName,
+        officialEmail: formData.email,
+        website: formData.website,
+        country: formData.country,
+        city: formData.city,
+        industry: formData.industry,
+        companySize: formData.size,
+        linkedinUrl: formData.linkedin,
+        description: formData.description,
+      });
+
+      const response = await apiPost("/companies/verification", {
+        verificationType,
+        documentUrl: documentUrl.trim(),
+        evidenceText: evidenceText.trim(),
+      });
+
+      setVerificationRecord(response.verification || null);
+      setVerificationStatus(response.verification?.status || "PENDING");
+      setVerificationMethod(verificationType);
+      setSuccess(response.message || "Verification request submitted successfully.");
+    } catch (err) {
+      setError(err.message || "Unable to submit company verification.");
+    } finally {
+      setVerificationSubmitting(false);
+    }
+  };
+
   const isVerified =
-    String(verificationStatus).toUpperCase() ===
-    "VERIFIED";
+    String(verificationStatus).toUpperCase() === "VERIFIED" ||
+    String(verificationRecord?.status || "").toUpperCase() === "VERIFIED";
+  const isVerificationPending =
+    !isVerified && String(verificationRecord?.status || "").toUpperCase() === "PENDING";
+  const displayedVerificationStatus = verificationRecord?.status || (
+    String(verificationStatus).toUpperCase() === "REJECTED" ? "REJECTED" : "NOT_SUBMITTED"
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
@@ -296,12 +370,16 @@ function CompanyProfile() {
           </div>
         )}
 
-        {/* VERIFIED BANNER */}
+        {/* COMPANY VERIFICATION STATUS */}
         <div
           className={`mb-6 rounded-2xl border p-5 ${
             isVerified
               ? "border-green-200 bg-green-50"
-              : "border-yellow-200 bg-yellow-50"
+              : isVerificationPending
+                ? "border-yellow-200 bg-yellow-50"
+                : displayedVerificationStatus === "REJECTED"
+                  ? "border-red-200 bg-red-50"
+                  : "border-slate-200 bg-slate-50"
           }`}
         >
           <div className="flex items-start gap-4">
@@ -310,33 +388,33 @@ function CompanyProfile() {
               className={`mt-0.5 shrink-0 ${
                 isVerified
                   ? "text-green-600"
-                  : "text-yellow-600"
+                  : isVerificationPending
+                    ? "text-yellow-600"
+                    : displayedVerificationStatus === "REJECTED"
+                      ? "text-red-600"
+                      : "text-slate-500"
               }`}
             />
 
             <div>
-              <h2
-                className={`font-bold ${
-                  isVerified
-                    ? "text-green-900"
-                    : "text-yellow-900"
-                }`}
-              >
+              <h2 className="font-bold text-slate-900">
                 {isVerified
                   ? "Verified Company"
-                  : "Verification Pending"}
+                  : isVerificationPending
+                    ? "Verification Pending"
+                    : displayedVerificationStatus === "REJECTED"
+                      ? "Verification Rejected"
+                      : "Verification Not Submitted"}
               </h2>
 
-              <p
-                className={`mt-1 text-sm ${
-                  isVerified
-                    ? "text-green-700"
-                    : "text-yellow-700"
-                }`}
-              >
+              <p className="mt-1 text-sm text-slate-600">
                 {isVerified
                   ? "Your company verification has been approved by InternShip Hub administration."
-                  : "Your company verification is currently pending administration approval."}
+                  : isVerificationPending
+                    ? "Your verification request is waiting for admin review."
+                    : displayedVerificationStatus === "REJECTED"
+                      ? "Your previous request was rejected. Review the admin note and submit updated evidence."
+                      : "Submit company verification evidence below. You must be verified before posting internships."}
               </p>
             </div>
           </div>
@@ -621,45 +699,73 @@ function CompanyProfile() {
           {/* VERIFICATION EVIDENCE */}
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
             <div className="mb-5">
-              <h2 className="text-lg font-bold text-slate-900">
-                Verification Evidence
-              </h2>
-
+              <h2 className="text-lg font-bold text-slate-900">Company Verification</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Your company verification information.
+                Submit official company evidence. An administrator must verify your company before you can publish internships.
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Verification Method
-                </p>
+            <div className={`mb-5 rounded-xl border p-4 ${isVerified ? "border-green-200 bg-green-50" : isVerificationPending ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
 
-                <p className="mt-2 font-semibold text-slate-900">
-                  {verificationMethod}
-                </p>
-              </div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current verification status</p>
+              <p className="mt-1 font-bold text-slate-900">{isVerified ? "Verified" : isVerificationPending ? "Pending Admin Review" : displayedVerificationStatus === "REJECTED" ? "Rejected — Resubmission Required" : "Not Submitted"}</p>
+              {verificationMethod && <p className="mt-1 text-sm text-slate-600">Method: {verificationMethod}</p>}
+              {verificationRecord?.admin_note && (
+                <p className="mt-2 text-sm text-slate-700">Admin note: {verificationRecord.admin_note}</p>
+              )}
+            </div>
 
-              <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Verification Status
-                </p>
-
-                <div
-                  className={`mt-2 flex items-center gap-2 font-semibold ${
-                    isVerified
-                      ? "text-green-600"
-                      : "text-yellow-600"
-                  }`}
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Verification Method</label>
+                <select
+                  value={verificationType}
+                  onChange={(event) => setVerificationType(event.target.value)}
+                  disabled={loading || verificationSubmitting || isVerified || isVerificationPending}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
                 >
-                  <CheckCircle size={17} />
-
-                  {isVerified
-                    ? "Verified"
-                    : verificationStatus}
-                </div>
+                  <option value="WEBSITE">Official Company Website</option>
+                  <option value="NTN">NTN / Registration Number</option>
+                  <option value="DOMAIN_EMAIL">Official Domain Email</option>
+                  <option value="OTHER">Other Supporting Evidence</option>
+                </select>
               </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Evidence URL (optional)</label>
+                <input
+                  type="url"
+                  value={documentUrl}
+                  onChange={(event) => setDocumentUrl(event.target.value)}
+                  disabled={loading || verificationSubmitting || isVerified || isVerificationPending}
+                  placeholder="https://your-company.com or document link"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">Verification Details / Evidence</label>
+                <textarea
+                  value={evidenceText}
+                  onChange={(event) => setEvidenceText(event.target.value)}
+                  disabled={loading || verificationSubmitting || isVerified || isVerificationPending}
+                  rows={4}
+                  placeholder="Enter your NTN/registration number, official domain email, or explain the supporting evidence..."
+                  className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-500">You can submit a new request if your previous request was rejected.</p>
+              <button
+                type="button"
+                onClick={handleSubmitVerification}
+                disabled={loading || verificationSubmitting || isVerified || isVerificationPending}
+                className="rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {verificationSubmitting ? "Submitting..." : isVerified ? "Company Verified" : isVerificationPending ? "Waiting for Admin Review" : displayedVerificationStatus === "REJECTED" ? "Resubmit Verification" : "Submit for Verification"}
+              </button>
             </div>
           </section>
 

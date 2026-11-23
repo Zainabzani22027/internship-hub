@@ -3,16 +3,20 @@ import app from "./app.js";
 
 dotenv.config();
 
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
-// Local environment ke liye app.listen chalega
-if (process.env.NODE_ENV !== "production") {
-  app.listen(PORT, () => {
-    console.log(
-      `InternShip Hub backend running on http://localhost:${PORT}`
-    );
+const server = app.listen(PORT, () => {
+  console.log(`InternShipHub API running on port ${PORT}`);
+});
+
+server.on("error", (error) => {
+  console.error("Backend startup error:", error);
+  process.exit(1);
+});
+
+process.on("SIGTERM", () => {
+  console.log("Shutting down backend server...");
+  server.close(() => {
+    process.exit(0);
   });
-}
-
-// Vercel ke liye app export karna zaroori hai
-export default app;
+});

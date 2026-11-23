@@ -1,126 +1,100 @@
 import pool from "../config/db.js";
 
-/*
-|--------------------------------------------------------------------------
-| SAVE INTERNSHIP
-|--------------------------------------------------------------------------
-| POST /api/saved-internships/:internshipId
-|--------------------------------------------------------------------------
-| Only STUDENT can save an internship.
-|--------------------------------------------------------------------------
-*/
+const getStudentProfileId = async (userId) => {
+  const result = await pool.query(
+    "SELECT id FROM student_profiles WHERE user_id = $1 LIMIT 1",
+    [userId]
+  );
+  return result.rows[0]?.id ?? null;
+};
 
 export const saveInternship = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
   try {
     const { internshipId } = req.params;
+    const studentProfileId = await getStudentProfileId(req.user.id);
 
-    const internshipResult = await pool.query(
+    if (!studentProfileId) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    const internshipResult = await client.query(
       `
-      SELECT
-        id,
-        approval_status,
-        internship_status
+      SELECT id, approval_status, internship_status
       FROM internships
       WHERE id = $1
       LIMIT 1
+      FOR UPDATE
       `,
       [internshipId]
     );
 
-    if (internshipResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Internship not found.",
-      });
+    if (!internshipResult.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(404).json({ success: false, message: "Internship not found." });
     }
 
     const internship = internshipResult.rows[0];
-
-    if (
-      internship.approval_status !== "APPROVED" ||
-      internship.internship_status !== "LIVE"
-    ) {
+    if (internship.approval_status !== "APPROVED" || internship.internship_status !== "LIVE") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
       return res.status(400).json({
         success: false,
-        message:
-          "Only approved and live internships can be saved.",
+        message: "Only approved and live internships can be saved.",
       });
     }
 
-    const existingResult = await pool.query(
+    const result = await client.query(
       `
-      SELECT
-        id
-      FROM saved_internships
-      WHERE student_id = $1
-        AND internship_id = $2
-      LIMIT 1
-      `,
-      [req.user.id, internshipId]
-    );
-
-    if (existingResult.rows.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "This internship is already saved.",
-      });
-    }
-
-    const result = await pool.query(
-      `
-      INSERT INTO saved_internships (
-        student_id,
-        internship_id
-      )
+      INSERT INTO saved_internships (student_id, internship_id)
       VALUES ($1, $2)
+      ON CONFLICT (student_id, internship_id) DO NOTHING
       RETURNING *
       `,
-      [req.user.id, internshipId]
+      [studentProfileId, internshipId]
     );
+
+    if (!result.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(409).json({ success: false, message: "This internship is already saved." });
+    }
+
+    await client.query("COMMIT");
+    transactionStarted = false;
 
     return res.status(201).json({
       success: true,
-      message:
-        "Internship saved successfully.",
+      message: "Internship saved successfully.",
       savedInternship: result.rows[0],
     });
   } catch (error) {
-    console.error(
-      "Save internship error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to save internship.",
-    });
+    if (transactionStarted) await client.query("ROLLBACK");
+    console.error("Save internship error:", error);
+    return res.status(500).json({ success: false, message: "Unable to save internship." });
+  } finally {
+    client.release();
   }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| GET MY SAVED INTERNSHIPS
-|--------------------------------------------------------------------------
-| GET /api/saved-internships
-|--------------------------------------------------------------------------
-| Only STUDENT can view their saved internships.
-|--------------------------------------------------------------------------
-*/
-
-export const getSavedInternships = async (
-  req,
-  res
-) => {
+export const getSavedInternships = async (req, res) => {
   try {
+    const studentProfileId = await getStudentProfileId(req.user.id);
+    if (!studentProfileId) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
     const result = await pool.query(
       `
       SELECT
         s.id AS saved_id,
-        s.saved_at AS saved_at,
-
+        s.saved_at,
         i.id AS internship_id,
         i.title,
         i.description,
@@ -132,30 +106,19 @@ export const getSavedInternships = async (
         i.work_mode,
         i.skills,
         i.deadline,
-
         c.company_name,
-
         cat.id AS category_id,
         cat.name AS category_name
-
       FROM saved_internships s
-
-      INNER JOIN internships i
-        ON s.internship_id = i.id
-
-      INNER JOIN companies c
-        ON i.company_id = c.id
-
-      INNER JOIN categories cat
-        ON i.category_id = cat.id
-
+      INNER JOIN internships i ON s.internship_id = i.id
+      INNER JOIN companies c ON i.company_id = c.id
+      LEFT JOIN categories cat ON i.category_id = cat.id
       WHERE s.student_id = $1
         AND i.approval_status = 'APPROVED'
         AND i.internship_status = 'LIVE'
-
       ORDER BY s.saved_at DESC
       `,
-      [req.user.id]
+      [studentProfileId]
     );
 
     return res.status(200).json({
@@ -164,70 +127,39 @@ export const getSavedInternships = async (
       savedInternships: result.rows,
     });
   } catch (error) {
-    console.error(
-      "Get saved internships error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to get saved internships.",
-    });
+    console.error("Get saved internships error:", error);
+    return res.status(500).json({ success: false, message: "Unable to get saved internships." });
   }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| REMOVE SAVED INTERNSHIP
-|--------------------------------------------------------------------------
-| DELETE /api/saved-internships/:internshipId
-|--------------------------------------------------------------------------
-| Only STUDENT can remove their saved internship.
-|--------------------------------------------------------------------------
-*/
-
-export const removeSavedInternship = async (
-  req,
-  res
-) => {
+export const removeSavedInternship = async (req, res) => {
   try {
     const { internshipId } = req.params;
+    const studentProfileId = await getStudentProfileId(req.user.id);
+
+    if (!studentProfileId) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
 
     const result = await pool.query(
       `
       DELETE FROM saved_internships
-      WHERE student_id = $1
-        AND internship_id = $2
+      WHERE student_id = $1 AND internship_id = $2
       RETURNING id
       `,
-      [req.user.id, internshipId]
+      [studentProfileId, internshipId]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message:
-          "Saved internship not found.",
-      });
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: "Saved internship not found." });
     }
 
     return res.status(200).json({
       success: true,
-      message:
-        "Internship removed from saved internships successfully.",
+      message: "Internship removed from saved internships successfully.",
     });
   } catch (error) {
-    console.error(
-      "Remove saved internship error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to remove saved internship.",
-    });
+    console.error("Remove saved internship error:", error);
+    return res.status(500).json({ success: false, message: "Unable to remove saved internship." });
   }
 };

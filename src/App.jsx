@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
+import OAuthCallback from "./pages/OAuthCallback.jsx";
 
 import StudentLayout from "./layouts/StudentLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -65,6 +66,15 @@ function App() {
         <Route
           path="/about"
           element={<About />}
+        />
+
+        {/* =========================
+            GOOGLE / APPLE OAUTH
+        ========================== */}
+
+        <Route
+          path="/auth/callback"
+          element={<OAuthCallback />}
         />
 
         {/* =========================
@@ -152,7 +162,6 @@ function App() {
           element={<Applications />}
         />
 
-        {/* Company Application Details */}
         <Route
           path="/company/applications/:id"
           element={<ApplicationDetails />}

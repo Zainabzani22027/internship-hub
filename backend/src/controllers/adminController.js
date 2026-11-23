@@ -17,9 +17,9 @@ export const getDashboardStats = async (req, res) => {
         (SELECT COUNT(*) FROM users WHERE role = 'COMPANY') AS total_companies,
 
         (
-          SELECT COUNT(*)
-          FROM companies
-          WHERE verification_status = 'PENDING'
+          SELECT COUNT(DISTINCT company_id)
+          FROM company_verifications
+          WHERE status = 'PENDING'
         ) AS pending_companies,
 
         (SELECT COUNT(*) FROM internships) AS total_internships,

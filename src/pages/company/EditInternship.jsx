@@ -25,7 +25,8 @@ function EditInternship() {
     duration: "",
     stipend: "",
     paymentType: "PAID",
-    location: "",
+    city: "",
+    country: "",
     workMode: "REMOTE",
     skills: "",
     deadline: "",
@@ -114,8 +115,8 @@ function EditInternship() {
             internship.paymentType ||
             "PAID",
 
-          location:
-            internship.location || "",
+          city: internship.city || "",
+          country: internship.country || "",
 
           workMode:
             internship.work_mode ||
@@ -260,8 +261,8 @@ function EditInternship() {
         paymentType:
           formData.paymentType,
 
-        location:
-          formData.location.trim(),
+        city: formData.city.trim(),
+        country: formData.country.trim(),
 
         workMode:
           formData.workMode,
@@ -594,23 +595,36 @@ function EditInternship() {
             </div>
 
 
-            {/* LOCATION */}
+            {/* CITY */}
 
             <div>
-
               <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Location
+                City
               </label>
-
               <input
                 type="text"
-                name="location"
-                value={formData.location}
+                name="city"
+                value={formData.city}
                 onChange={handleChange}
-                placeholder="e.g. Islamabad, Pakistan"
+                placeholder="e.g. Islamabad"
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
               />
+            </div>
 
+            {/* COUNTRY */}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Country
+              </label>
+              <input
+                type="text"
+                name="country"
+                value={formData.country}
+                onChange={handleChange}
+                placeholder="e.g. Pakistan"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+              />
             </div>
 
 
@@ -633,7 +647,7 @@ function EditInternship() {
                   Remote
                 </option>
 
-                <option value="ON_SITE">
+                <option value="ONSITE">
                   On-site
                 </option>
 
@@ -655,6 +669,7 @@ function EditInternship() {
               </label>
 
               <input
+                required
                 type="date"
                 name="deadline"
                 value={formData.deadline}

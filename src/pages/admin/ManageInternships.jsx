@@ -110,21 +110,27 @@ function ManageInternships() {
           stipend = `$${stipendValue} / Month`;
         }
 
-        const rawStatus = String(
-          internship.status ||
-            internship.internship_status ||
-            "PENDING"
-        ).toUpperCase();
 
-        let status = "Pending";
+const approvalStatus = String(
+  internship.approval_status || "PENDING"
+).toUpperCase();
 
-        if (rawStatus === "APPROVED" || rawStatus === "LIVE") {
-          status = "Approved";
-        } else if (rawStatus === "REJECTED") {
-          status = "Rejected";
-        } else {
-          status = "Pending";
-        }
+const internshipStatus = String(
+  internship.internship_status || ""
+).toUpperCase();
+
+let status = "Pending";
+
+if (approvalStatus === "APPROVED") {
+  status = "Approved";
+} else if (approvalStatus === "REJECTED") {
+  status = "Rejected";
+} else if (approvalStatus === "PENDING") {
+  status = "Pending";
+} else if (internshipStatus === "CLOSED") {
+  status = "Closed";
+}
+
 
         return {
           id: internship.id,
@@ -598,42 +604,6 @@ function ManageInternships() {
                                 <FaTimesCircle />
                               </button>
                             </>
-                          )}
-
-                          {internship.status === "Rejected" && (
-                            <button
-                              type="button"
-                              disabled={actionLoading === internship.id}
-                              onClick={() =>
-                                handleApprove(internship.id)
-                              }
-                              title="Approve Internship"
-                              className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-50 text-green-600 transition hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {actionLoading === internship.id ? (
-                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-green-200 border-t-green-600" />
-                              ) : (
-                                <FaCheckCircle />
-                              )}
-                            </button>
-                          )}
-
-                          {internship.status === "Approved" && (
-                            <button
-                              type="button"
-                              disabled={actionLoading === internship.id}
-                              onClick={() =>
-                                handleReject(internship.id)
-                              }
-                              title="Reject Internship"
-                              className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {actionLoading === internship.id ? (
-                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-200 border-t-red-600" />
-                              ) : (
-                                <FaTimesCircle />
-                              )}
-                            </button>
                           )}
 
                         </div>

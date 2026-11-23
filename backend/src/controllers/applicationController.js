@@ -1,153 +1,112 @@
 import pool from "../config/db.js";
 
-/*
-|--------------------------------------------------------------------------
-| APPLY FOR INTERNSHIP
-|--------------------------------------------------------------------------
-| POST /api/applications/:internshipId
-|--------------------------------------------------------------------------
-*/
+const getStudentProfileId = async (userId) => {
+  const result = await pool.query(
+    "SELECT id FROM student_profiles WHERE user_id = $1 LIMIT 1",
+    [userId]
+  );
+  return result.rows[0]?.id ?? null;
+};
 
-export const applyForInternship = async (
-  req,
-  res
-) => {
+export const applyForInternship = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
   try {
     const { internshipId } = req.params;
     const { coverLetter } = req.body;
 
-    // Check internship
-    const internshipResult = await pool.query(
+    const studentProfileId = await getStudentProfileId(req.user.id);
+    if (!studentProfileId) {
+      return res.status(404).json({
+        success: false,
+        message: "Student profile not found. Please complete your profile first.",
+      });
+    }
+
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    // Lock the internship while applying so a company cannot delete it at the same time.
+    const internshipResult = await client.query(
       `
-      SELECT
-        id,
-        company_id,
-        title,
-        approval_status,
-        internship_status
+      SELECT id, approval_status, internship_status
       FROM internships
       WHERE id = $1
       LIMIT 1
+      FOR UPDATE
       `,
       [internshipId]
     );
 
-    if (internshipResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Internship not found.",
-      });
+    if (!internshipResult.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(404).json({ success: false, message: "Internship not found." });
     }
 
-    const internship =
-      internshipResult.rows[0];
-
-    // Only live internships can receive applications
-    if (
-      internship.approval_status !==
-        "APPROVED" ||
-      internship.internship_status !== "LIVE"
-    ) {
+    const internship = internshipResult.rows[0];
+    if (internship.approval_status !== "APPROVED" || internship.internship_status !== "LIVE") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
       return res.status(400).json({
         success: false,
-        message:
-          "This internship is not currently available for applications.",
+        message: "This internship is not currently available for applications.",
       });
     }
 
-    // Check duplicate application
-    const existingApplication =
-      await pool.query(
-        `
-        SELECT
-          id,
-          status
-        FROM applications
-        WHERE internship_id = $1
-          AND student_id = $2
-        LIMIT 1
-        `,
-        [
-          internshipId,
-          req.user.id,
-        ]
-      );
-
-    if (
-      existingApplication.rows.length > 0
-    ) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "You have already applied for this internship.",
-        application:
-          existingApplication.rows[0],
-      });
-    }
-
-    // Create application
-    const result = await pool.query(
+    const result = await client.query(
       `
-      INSERT INTO applications (
-        internship_id,
-        student_id,
-        status,
-        cover_letter
-      )
+      INSERT INTO applications (internship_id, student_id, status, cover_letter)
       VALUES ($1, $2, 'APPLIED', $3)
+      ON CONFLICT (internship_id, student_id) DO NOTHING
       RETURNING *
       `,
-      [
-        internshipId,
-        req.user.id,
-        coverLetter || null,
-      ]
+      [internshipId, studentProfileId, coverLetter?.trim() || null]
     );
+
+    if (!result.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(409).json({
+        success: false,
+        message: "You have already applied for this internship.",
+      });
+    }
+
+    await client.query("COMMIT");
+    transactionStarted = false;
 
     return res.status(201).json({
       success: true,
-      message:
-        "Application submitted successfully.",
+      message: "Application submitted successfully.",
       application: result.rows[0],
     });
   } catch (error) {
-    console.error(
-      "Apply internship error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to submit application.",
-      error: error.message,
-    });
+    if (transactionStarted) await client.query("ROLLBACK");
+    console.error("Apply internship error:", error);
+    return res.status(500).json({ success: false, message: "Unable to submit application." });
+  } finally {
+    client.release();
   }
 };
 
-
-/*
-|--------------------------------------------------------------------------
-| GET STUDENT APPLICATIONS
-|--------------------------------------------------------------------------
-| GET /api/applications/student
-|--------------------------------------------------------------------------
-*/
-
-export const getStudentApplications = async (
-  req,
-  res
-) => {
+export const getStudentApplications = async (req, res) => {
   try {
+    const studentProfileId = await getStudentProfileId(req.user.id);
+    if (!studentProfileId) {
+      return res.status(404).json({ success: false, message: "Student profile not found." });
+    }
+
     const result = await pool.query(
       `
       SELECT
+        a.id AS id,
         a.id AS application_id,
         a.status,
         a.cover_letter,
         a.applied_at,
         a.updated_at,
-
         i.id AS internship_id,
         i.title AS internship_title,
         i.description,
@@ -159,32 +118,21 @@ export const getStudentApplications = async (
         i.work_mode,
         i.skills,
         i.deadline,
-
+        i.approval_status,
+        i.internship_status,
         c.id AS company_id,
         c.company_name,
         c.logo_url,
-
         cat.id AS category_id,
         cat.name AS category_name
-
       FROM applications a
-
-      INNER JOIN internships i
-        ON a.internship_id = i.id
-
-      INNER JOIN companies c
-        ON i.company_id = c.id
-
-      LEFT JOIN categories cat
-        ON i.category_id = cat.id
-
+      INNER JOIN internships i ON a.internship_id = i.id
+      INNER JOIN companies c ON i.company_id = c.id
+      LEFT JOIN categories cat ON i.category_id = cat.id
       WHERE a.student_id = $1
-
-      ORDER BY
-        a.applied_at DESC,
-        a.id DESC
+      ORDER BY a.applied_at DESC, a.id DESC
       `,
-      [req.user.id]
+      [studentProfileId]
     );
 
     return res.status(200).json({
@@ -193,124 +141,46 @@ export const getStudentApplications = async (
       applications: result.rows,
     });
   } catch (error) {
-    console.error(
-      "Get student applications error:",
-      error
-    );
-
-    return res.status(500).json({
-      success: false,
-      message:
-        "Unable to get student applications.",
-      error: error.message,
-    });
+    console.error("Get student applications error:", error);
+    return res.status(500).json({ success: false, message: "Unable to get student applications." });
   }
 };
 
+export const updateApplicationStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const allowedStatuses = ["UNDER_REVIEW", "SHORTLISTED", "INTERVIEW", "SELECTED", "REJECTED"];
 
-/*
-|--------------------------------------------------------------------------
-| UPDATE APPLICATION STATUS
-|--------------------------------------------------------------------------
-| PUT /api/applications/:id/status
-|--------------------------------------------------------------------------
-*/
-
-export const updateApplicationStatus =
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { status } = req.body;
-
-      const allowedStatuses = [
-        "UNDER_REVIEW",
-        "SHORTLISTED",
-        "INTERVIEW",
-        "SELECTED",
-        "REJECTED",
-      ];
-
-      if (
-        !allowedStatuses.includes(status)
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid application status.",
-        });
-      }
-
-      // Check application and company ownership
-      const applicationResult =
-        await pool.query(
-          `
-          SELECT
-            a.id,
-            a.status,
-            a.internship_id,
-            i.company_id
-          FROM applications a
-
-          INNER JOIN internships i
-            ON a.internship_id = i.id
-
-          INNER JOIN companies c
-            ON i.company_id = c.id
-
-          WHERE a.id = $1
-            AND c.user_id = $2
-
-          LIMIT 1
-          `,
-          [
-            id,
-            req.user.id,
-          ]
-        );
-
-      if (
-        applicationResult.rows.length === 0
-      ) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Application not found or you are not authorized to update it.",
-        });
-      }
-
-      // Update status
-      const result = await pool.query(
-        `
-        UPDATE applications
-        SET
-          status = $1,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-        RETURNING *
-        `,
-        [
-          status,
-          id,
-        ]
-      );
-
-      return res.status(200).json({
-        success: true,
-        message:
-          "Application status updated successfully.",
-        application: result.rows[0],
-      });
-    } catch (error) {
-      console.error(
-        "Update application status error:",
-        error
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          "Unable to update application status.",
-        error: error.message,
-      });
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid application status." });
     }
-  };
+
+    const result = await pool.query(
+      `
+      UPDATE applications a
+      SET status = $1, updated_at = CURRENT_TIMESTAMP
+      FROM internships i
+      INNER JOIN companies c ON c.id = i.company_id
+      WHERE a.id = $2
+        AND a.internship_id = i.id
+        AND c.user_id = $3
+      RETURNING a.*
+      `,
+      [status, id, req.user.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ success: false, message: "Application not found or you are not authorized to update it." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Application status updated successfully.",
+      application: result.rows[0],
+    });
+  } catch (error) {
+    console.error("Update application status error:", error);
+    return res.status(500).json({ success: false, message: "Unable to update application status." });
+  }
+};

@@ -20,7 +20,8 @@ function PostInternship() {
     duration: "3 Months",
     stipend: "",
     paymentType: "Paid",
-    location: "",
+    city: "",
+    country: "",
     mode: "Remote",
     skills: "",
     deadline: "",
@@ -31,12 +32,22 @@ function PostInternship() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
 
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     loadCategories();
   }, []);
+
+  // Show the submission confirmation briefly, then open Internship History.
+  useEffect(() => {
+    if (!submitted) return undefined;
+    const redirectTimer = window.setTimeout(() => {
+      navigate("/company/internships", { replace: true });
+    }, 2500);
+    return () => window.clearTimeout(redirectTimer);
+  }, [submitted, navigate]);
 
   const loadCategories = async () => {
     try {
@@ -104,6 +115,7 @@ function PostInternship() {
     }));
 
     setError("");
+    setNeedsVerification(false);
   };
 
   const handleSubmit = async (e) => {
@@ -112,6 +124,7 @@ function PostInternship() {
     try {
       setSubmitting(true);
       setError("");
+      setNeedsVerification(false);
 
       const selectedCategory = categories.find(
         (category) =>
@@ -145,7 +158,8 @@ function PostInternship() {
             : formData.stipend.trim(),
         paymentType:
           formData.paymentType.toUpperCase(),
-        location: formData.location.trim(),
+        city: formData.city.trim(),
+        country: formData.country.trim(),
         workMode:
           formData.mode.toUpperCase(),
         skills: skillsArray,
@@ -161,10 +175,9 @@ function PostInternship() {
         error
       );
 
-      setError(
-        error.message ||
-          "Unable to submit internship."
-      );
+      const message = error.message || "Unable to submit internship.";
+      setError(message);
+      setNeedsVerification(message.toLowerCase().includes("must be verified"));
     } finally {
       setSubmitting(false);
     }
@@ -284,9 +297,25 @@ function PostInternship() {
         {/* Error */}
         {error && (
           <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 p-4">
-            <p className="text-sm font-semibold text-red-700">
-              {error}
-            </p>
+            <p className="text-sm font-semibold text-red-700">{error}</p>
+            {needsVerification && (
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => navigate("/company/profile")}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  Open Company Verification
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/company")}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -440,20 +469,34 @@ function PostInternship() {
               </select>
             </div>
 
-            {/* Location */}
+            {/* City */}
             <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Location *
+                City
               </label>
-
               <input
-                required
                 type="text"
-                name="location"
-                value={formData.location}
+                name="city"
+                value={formData.city}
                 onChange={handleChange}
                 disabled={submitting}
-                placeholder="e.g. Islamabad, Pakistan"
+                placeholder="e.g. Islamabad"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
+              />
+            </div>
+
+            {/* Country */}
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Country
+              </label>
+              <input
+                type="text"
+                name="country"
+                value={formData.country}
+                onChange={handleChange}
+                disabled={submitting}
+                placeholder="e.g. Pakistan"
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:bg-slate-50"
               />
             </div>

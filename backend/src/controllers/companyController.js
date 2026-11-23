@@ -230,130 +230,131 @@ export const updateCompanyProfile = async (req, res) => {
 */
 
 export const submitCompanyVerification = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
   try {
-    const {
-      verificationType,
-      documentUrl,
-      evidenceText,
-    } = req.body;
-
-    const allowedTypes = [
-      "NTN",
-      "WEBSITE",
-      "DOMAIN_EMAIL",
-      "OTHER",
-    ];
-
-    if (!verificationType) {
-      return res.status(400).json({
-        success: false,
-        message: "Verification type is required.",
-      });
-    }
+    const verificationType = String(req.body.verificationType || "").trim().toUpperCase();
+    const documentUrl = String(req.body.documentUrl || "").trim();
+    const evidenceText = String(req.body.evidenceText || "").trim();
+    const allowedTypes = ["NTN", "WEBSITE", "DOMAIN_EMAIL", "OTHER"];
 
     if (!allowedTypes.includes(verificationType)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Verification type must be NTN, WEBSITE, DOMAIN_EMAIL or OTHER.",
+        message: "Verification type must be NTN, WEBSITE, DOMAIN_EMAIL or OTHER.",
       });
     }
 
     if (!documentUrl && !evidenceText) {
       return res.status(400).json({
         success: false,
-        message:
-          "Document URL or verification evidence is required.",
+        message: "Provide a verification document URL or supporting evidence.",
       });
     }
 
-    const companyResult = await pool.query(
+    if (documentUrl) {
+      try {
+        const parsedUrl = new URL(documentUrl);
+        if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+          throw new Error("Unsupported URL protocol.");
+        }
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Evidence URL must be a valid HTTP or HTTPS link.",
+        });
+      }
+    }
+
+    await client.query("BEGIN");
+    transactionStarted = true;
+
+    const companyResult = await client.query(
       `
-      SELECT
-        id,
-        user_id,
-        company_name,
-        verification_status
+      SELECT id, user_id, company_name, verification_status
       FROM companies
       WHERE user_id = $1
       LIMIT 1
+      FOR UPDATE
       `,
       [req.user.id]
     );
 
-    if (companyResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Company profile not found.",
-      });
+    if (!companyResult.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(404).json({ success: false, message: "Company profile not found." });
     }
 
     const company = companyResult.rows[0];
 
-    const verificationResult = await pool.query(
+    if (String(company.verification_status).toUpperCase() === "VERIFIED") {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(409).json({ success: false, message: "Your company is already verified." });
+    }
+
+    const pendingResult = await client.query(
       `
-      INSERT INTO company_verifications (
-        company_id,
-        verification_type,
-        document_url,
-        evidence_text,
-        status,
-        submitted_at
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        'PENDING',
-        CURRENT_TIMESTAMP
-      )
-      RETURNING
-        id,
-        company_id,
-        verification_type,
-        document_url,
-        evidence_text,
-        status,
-        admin_note,
-        submitted_at,
-        reviewed_at
+      SELECT id
+      FROM company_verifications
+      WHERE company_id = $1 AND status = 'PENDING'
+      ORDER BY submitted_at DESC, id DESC
+      LIMIT 1
       `,
-      [
-        company.id,
-        verificationType,
-        documentUrl?.trim() || null,
-        evidenceText?.trim() || null,
-      ]
+      [company.id]
     );
 
-    await pool.query(
+    if (pendingResult.rows.length) {
+      await client.query("ROLLBACK");
+      transactionStarted = false;
+      return res.status(409).json({
+        success: false,
+        message: "Your verification request is already waiting for admin review.",
+      });
+    }
+
+    const verificationResult = await client.query(
+      `
+      INSERT INTO company_verifications (
+        company_id, verification_type, document_url, evidence_text,
+        status, submitted_at
+      )
+      VALUES ($1, $2, $3, $4, 'PENDING', CURRENT_TIMESTAMP)
+      RETURNING
+        id, company_id, verification_type, document_url, evidence_text,
+        status, admin_note, submitted_at, reviewed_at
+      `,
+      [company.id, verificationType, documentUrl || null, evidenceText || null]
+    );
+
+    await client.query(
       `
       UPDATE companies
-      SET
-        verification_status = 'PENDING',
-        updated_at = CURRENT_TIMESTAMP
+      SET verification_status = 'PENDING', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       `,
       [company.id]
     );
 
+    await client.query("COMMIT");
+    transactionStarted = false;
+
     return res.status(201).json({
       success: true,
-      message:
-        "Company verification submitted successfully. Waiting for admin approval.",
+      message: "Company verification submitted successfully. Waiting for admin approval.",
       verification: verificationResult.rows[0],
     });
   } catch (error) {
-    console.error(
-      "Submit company verification error:",
-      error
-    );
-
+    if (transactionStarted) await client.query("ROLLBACK");
+    console.error("Submit company verification error:", error);
     return res.status(500).json({
       success: false,
       message: "Unable to submit company verification.",
     });
+  } finally {
+    client.release();
   }
 };
 
@@ -390,7 +391,7 @@ export const getCompanyVerification = async (req, res) => {
 
       WHERE c.user_id = $1
 
-      ORDER BY cv.submitted_at DESC
+      ORDER BY cv.submitted_at DESC, cv.id DESC
       `,
       [req.user.id]
     );
@@ -420,6 +421,66 @@ export const getCompanyVerification = async (req, res) => {
 | GET /api/admin/company-verifications
 |--------------------------------------------------------------------------
 */
+
+export const getAdminCompanies = async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        c.id AS company_id,
+        c.user_id,
+        c.company_name,
+        c.official_email,
+        c.website,
+        c.country,
+        c.city,
+        c.industry,
+        c.company_size,
+        c.linkedin_url,
+        c.description,
+        c.logo_url,
+        c.verification_status,
+        c.created_at,
+        c.updated_at,
+        u.full_name,
+        u.email,
+        u.is_active,
+        cv.id AS verification_id,
+        cv.verification_type,
+        cv.document_url,
+        cv.evidence_text,
+        cv.status AS verification_request_status,
+        cv.admin_note,
+        cv.submitted_at,
+        cv.reviewed_at
+      FROM companies c
+      INNER JOIN users u ON u.id = c.user_id
+      LEFT JOIN LATERAL (
+        SELECT
+          id, verification_type, document_url, evidence_text,
+          status, admin_note, submitted_at, reviewed_at
+        FROM company_verifications
+        WHERE company_id = c.id
+        ORDER BY submitted_at DESC NULLS LAST, id DESC
+        LIMIT 1
+      ) cv ON TRUE
+      ORDER BY c.created_at DESC, c.id DESC
+      `
+    );
+
+    return res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      companies: result.rows,
+    });
+  } catch (error) {
+    console.error("Get admin companies error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Unable to get registered companies.",
+    });
+  }
+};
 
 export const getPendingCompanyVerifications = async (
   req,

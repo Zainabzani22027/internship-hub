@@ -37,6 +37,24 @@ export const findUserById = async (id) => {
   return result.rows[0];
 };
 
+export const findUserByProvider = async (
+  provider,
+  providerUid
+) => {
+  const result = await pool.query(
+    `
+    SELECT *
+    FROM users
+    WHERE auth_provider = $1
+      AND provider_uid = $2
+    LIMIT 1
+    `,
+    [provider, providerUid]
+  );
+
+  return result.rows[0];
+};
+
 export const createUser = async ({
   fullName,
   email,
@@ -62,7 +80,12 @@ export const createUser = async ({
       is_active,
       created_at
     `,
-    [fullName, email.toLowerCase(), passwordHash, role]
+    [
+      fullName,
+      email.toLowerCase(),
+      passwordHash,
+      role,
+    ]
   );
 
   return result.rows[0];
@@ -84,7 +107,10 @@ export const createStudentProfile = async (userId) => {
   return result.rows[0];
 };
 
-export const createCompanyProfile = async (userId, companyName) => {
+export const createCompanyProfile = async (
+  userId,
+  companyName
+) => {
   const result = await pool.query(
     `
     INSERT INTO companies (

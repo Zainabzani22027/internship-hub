@@ -2,6 +2,7 @@ import express from "express";
 
 import {
   getCompanyApplications,
+  markInternshipCompleted,
 } from "../controllers/companyApplicationController.js";
 
 import {
@@ -24,6 +25,13 @@ router.get(
   protect,
   authorize("COMPANY"),
   getCompanyApplications
+);
+
+router.put(
+  "/applications/:applicationId/complete",
+  protect,
+  authorize("COMPANY"),
+  markInternshipCompleted
 );
 
 export default router;

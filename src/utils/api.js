@@ -1,4 +1,7 @@
-const API_BASE_URL = "https://internship-hub-backend-flame.vercel.app/api";
+
+const API_BASE_URL = import.meta.env.DEV
+  ? "http://localhost:5000/api"
+  : "https://internship-hub-backend-liard.vercel.app/api";
 
 const request = async (endpoint, options = {}) => {
   const token = localStorage.getItem("token");
@@ -49,20 +52,14 @@ export const apiGet = async (endpoint) => {
   });
 };
 
-export const apiPost = async (
-  endpoint,
-  body = {}
-) => {
+export const apiPost = async (endpoint, body = {}) => {
   return request(endpoint, {
     method: "POST",
     body: JSON.stringify(body),
   });
 };
 
-export const apiPut = async (
-  endpoint,
-  body = {}
-) => {
+export const apiPut = async (endpoint, body = {}) => {
   return request(endpoint, {
     method: "PUT",
     body: JSON.stringify(body),
@@ -75,18 +72,8 @@ export const apiDelete = async (endpoint) => {
   });
 };
 
-/*
-|--------------------------------------------------------------------------
-| FILE UPLOAD
-|--------------------------------------------------------------------------
-*/
-
-export const apiUpload = async (
-  endpoint,
-  formData
-) => {
+export const apiUpload = async (endpoint, formData) => {
   const token = localStorage.getItem("token");
-
   const headers = {};
 
   if (token) {

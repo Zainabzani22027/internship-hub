@@ -1,3 +1,4 @@
+
 import pg from "pg";
 import dotenv from "dotenv";
 
@@ -5,17 +6,27 @@ dotenv.config();
 
 const { Pool } = pg;
 
+const dbHost = process.env.DB_HOST || "";
+
+const isLocalDatabase =
+  dbHost === "localhost" ||
+  dbHost === "127.0.0.1" ||
+  dbHost === "::1";
+
+const useSSL = process.env.DB_SSL
+  ? process.env.DB_SSL.toLowerCase() === "true"
+  : !isLocalDatabase;
+
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT || 5432,
+  host: dbHost,
+  port: Number(process.env.DB_PORT) || 5432,
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 
-  // Neon PostgreSQL requires SSL
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ssl: useSSL
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
 pool.on("connect", () => {

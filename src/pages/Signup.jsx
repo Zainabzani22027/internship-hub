@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
 import { FaApple, FaEye, FaEyeSlash } from "react-icons/fa";
+import { apiPost, API_BASE_URL } from "../utils/api";
 
 function Signup() {
   const navigate = useNavigate();
 
   const [role, setRole] = useState("student");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -17,53 +19,165 @@ function Signup() {
     agree: false,
   });
 
+  const [error, setError] = useState("");
+
   const handleChange = (event) => {
-    const { name, value, type, checked } = event.target;
+    const {
+      name,
+      value,
+      type,
+      checked,
+    } = event.target;
 
     setFormData((previousData) => ({
       ...previousData,
-      [name]: type === "checkbox" ? checked : value,
+      [name]:
+        type === "checkbox"
+          ? checked
+          : value,
     }));
   };
 
-  const handleSubmit = (event) => {
+  /*
+  |--------------------------------------------------------------------------
+  | SOCIAL SIGNUP
+  |--------------------------------------------------------------------------
+  */
+
+  const handleSocialSignup = (provider) => {
+    setError("");
+
+    const normalizedRole =
+      role === "company"
+        ? "COMPANY"
+        : "STUDENT";
+
+    const params = new URLSearchParams({
+      mode: "signup",
+      role: normalizedRole,
+    });
+
+    if (
+      normalizedRole === "COMPANY" &&
+      formData.companyName.trim()
+    ) {
+      params.set(
+        "companyName",
+        formData.companyName.trim()
+      );
+    }
+
+    window.location.href =
+      `${API_BASE_URL}/auth/${provider.toLowerCase()}?${params.toString()}`;
+  };
+
+  /*
+  |--------------------------------------------------------------------------
+  | NORMAL EMAIL SIGNUP
+  |--------------------------------------------------------------------------
+  */
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
+
+    setError("");
 
     const nameIsMissing =
       role === "student"
-        ? !formData.fullName
-        : !formData.companyName;
+        ? !formData.fullName.trim()
+        : !formData.companyName.trim();
 
     if (
       nameIsMissing ||
-      !formData.email ||
+      !formData.email.trim() ||
       !formData.password
     ) {
-      alert("Please complete all required fields.");
+      setError(
+        "Please complete all required fields."
+      );
       return;
     }
 
     if (formData.password.length < 6) {
-      alert("Password must contain at least 6 characters.");
+      setError(
+        "Password must contain at least 6 characters."
+      );
       return;
     }
 
     if (!formData.agree) {
-      alert("Please accept the Terms and Privacy Policy.");
+      setError(
+        "Please accept the Terms of Service and Privacy Policy."
+      );
       return;
     }
 
-    if (role === "student") {
-      navigate("/student");
-    } else {
-      navigate("/company");
-    }
-  };
+    try {
+      setLoading(true);
 
-  const handleSocialSignup = (provider) => {
-    alert(
-      `${provider} Sign-Up will be connected with authentication later.`
-    );
+      const data = await apiPost(
+        "/auth/register",
+        {
+          fullName:
+            role === "student"
+              ? formData.fullName.trim()
+              : formData.companyName.trim(),
+
+          email:
+            formData.email.trim(),
+
+          password:
+            formData.password,
+
+          role:
+            role === "student"
+              ? "STUDENT"
+              : "COMPANY",
+
+          companyName:
+            role === "company"
+              ? formData.companyName.trim()
+              : undefined,
+        }
+      );
+
+      if (
+        !data.success ||
+        !data.token
+      ) {
+        throw new Error(
+          data.message ||
+            "Unable to create account."
+        );
+      }
+
+      localStorage.setItem(
+        "token",
+        data.token
+      );
+
+      if (data.user) {
+        localStorage.setItem(
+          "user",
+          JSON.stringify(data.user)
+        );
+      }
+
+      if (
+        data.user?.role === "COMPANY"
+      ) {
+        navigate("/company");
+      } else {
+        navigate("/student");
+      }
+    } catch (signupError) {
+      setError(
+        signupError.message ||
+          "Unable to create your account."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -75,17 +189,24 @@ function Signup() {
 
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 sm:px-8">
 
-          <Link to="/" className="flex items-center gap-3">
+          <Link
+            to="/"
+            className="flex items-center gap-3"
+          >
 
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#2563EB] to-[#6D5DFB] text-xl text-white shadow-md">
-              🎓
-            </div>
+            <img
+              src="/internshiphub-logo.svg"
+              alt="InternShipHub"
+              className="h-11 w-11 rounded-xl"
+            />
 
             <div>
 
               <div className="text-xl font-extrabold text-[#0F172A]">
                 InternShip
-                <span className="text-[#2563EB]">Hub</span>
+                <span className="text-[#2563EB]">
+                  Hub
+                </span>
               </div>
 
               <p className="hidden text-[10px] uppercase tracking-[0.18em] text-slate-400 sm:block">
@@ -126,8 +247,10 @@ function Signup() {
               </h1>
 
               <p className="mt-5 leading-7 text-blue-100">
-                Join InternShip Hub to discover internships, connect with
-                global talent and build professional experience.
+                Join InternShip Hub to discover
+                internships, connect with global
+                talent and build professional
+                experience.
               </p>
 
             </div>
@@ -163,8 +286,15 @@ function Signup() {
             </h2>
 
             <p className="mt-2 text-sm text-slate-500">
-              First select the type of account you want to create.
+              Choose your account type and
+              create your InternShipHub account.
             </p>
+
+            {error && (
+              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
 
             {/* Role */}
 
@@ -172,7 +302,10 @@ function Signup() {
 
               <button
                 type="button"
-                onClick={() => setRole("student")}
+                onClick={() => {
+                  setRole("student");
+                  setError("");
+                }}
                 className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
                   role === "student"
                     ? "bg-white text-[#2563EB] shadow-sm"
@@ -184,7 +317,10 @@ function Signup() {
 
               <button
                 type="button"
-                onClick={() => setRole("company")}
+                onClick={() => {
+                  setRole("company");
+                  setError("");
+                }}
                 className={`rounded-lg px-4 py-3 text-sm font-semibold transition ${
                   role === "company"
                     ? "bg-white text-[#2563EB] shadow-sm"
@@ -202,20 +338,26 @@ function Signup() {
 
               <button
                 type="button"
-                onClick={() => handleSocialSignup("Google")}
-                className="flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={loading}
+                onClick={() =>
+                  handleSocialSignup("google")
+                }
+                className="flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FcGoogle className="text-xl" />
-                Google
+                Continue with Google
               </button>
 
               <button
                 type="button"
-                onClick={() => handleSocialSignup("Apple")}
-                className="flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+                disabled={loading}
+                onClick={() =>
+                  handleSocialSignup("apple")
+                }
+                className="flex items-center justify-center gap-3 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FaApple className="text-xl" />
-                Apple
+                Continue with Apple
               </button>
 
             </div>
@@ -234,7 +376,10 @@ function Signup() {
 
             {/* Form */}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4"
+            >
 
               {role === "student" ? (
 
@@ -254,7 +399,8 @@ function Signup() {
                     value={formData.fullName}
                     onChange={handleChange}
                     placeholder="Enter your full name"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50"
+                    disabled={loading}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
                   />
 
                 </div>
@@ -277,7 +423,8 @@ function Signup() {
                     value={formData.companyName}
                     onChange={handleChange}
                     placeholder="Enter company name"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50"
+                    disabled={loading}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
                   />
 
                 </div>
@@ -300,7 +447,8 @@ function Signup() {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="Enter your email address"
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
                 />
 
               </div>
@@ -319,19 +467,33 @@ function Signup() {
                   <input
                     id="signupPassword"
                     name="password"
-                    type={showPassword ? "text" : "password"}
+                    type={
+                      showPassword
+                        ? "text"
+                        : "password"
+                    }
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="Minimum 6 characters"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-12 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50"
+                    disabled={loading}
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-12 outline-none focus:border-[#2563EB] focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
                   />
 
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={loading}
+                    onClick={() =>
+                      setShowPassword(
+                        !showPassword
+                      )
+                    }
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
                   >
-                    {showPassword ? <FaEyeSlash /> : <FaEye />}
+                    {showPassword ? (
+                      <FaEyeSlash />
+                    ) : (
+                      <FaEye />
+                    )}
                   </button>
 
                 </div>
@@ -345,20 +507,29 @@ function Signup() {
                   type="checkbox"
                   checked={formData.agree}
                   onChange={handleChange}
+                  disabled={loading}
                   className="mt-1"
                 />
 
                 <span>
-                  I agree to the Terms of Service and Privacy Policy.
+                  I agree to the Terms of Service
+                  and Privacy Policy.
                 </span>
 
               </label>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-[#2563EB] px-5 py-3.5 font-bold text-white shadow-md transition hover:bg-blue-700"
+                disabled={loading}
+                className="w-full rounded-xl bg-[#2563EB] px-5 py-3.5 font-bold text-white shadow-md transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Create {role === "student" ? "Student" : "Company"} Account
+                {loading
+                  ? "Creating Account..."
+                  : `Create ${
+                      role === "student"
+                        ? "Student"
+                        : "Company"
+                    } Account`}
               </button>
 
             </form>

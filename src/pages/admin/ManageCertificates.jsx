@@ -15,6 +15,7 @@ import {
 } from "react-icons/fa";
 
 import { apiGet, apiPut } from "../../utils/api";
+import { downloadCertificatePng } from "../../utils/certificatePng";
 
 function ManageCertificates() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -51,6 +52,7 @@ function ManageCertificates() {
             `CERT-${certificate.id}`,
 
           student:
+            certificate.certificate_full_name ||
             certificate.student_name ||
             certificate.student ||
             "Unknown Student",
@@ -84,6 +86,9 @@ function ManageCertificates() {
 
           certificateUrl:
             certificate.certificate_url || "",
+          certificateFullName:
+            certificate.certificate_full_name || certificate.student_name || "",
+          issueDateRaw: certificate.issue_date || certificate.issued_at || null,
 
           qrCodeUrl:
             certificate.qr_code_url || "",
@@ -179,22 +184,23 @@ function ManageCertificates() {
   |--------------------------------------------------------------------------
   */
 
-  const viewCertificate = (
-    certificate
-  ) => {
-    if (certificate.certificateUrl) {
-      window.open(
-        certificate.certificateUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
-
+  const viewCertificate = async (certificate) => {
+    if (certificate.status !== "Issued") {
+      alert("Only active issued certificates can be downloaded.");
       return;
     }
-
-    alert(
-      `Certificate ID: ${certificate.certificateId}\n\nStudent: ${certificate.student}\nCompany: ${certificate.company}\nInternship: ${certificate.internship}`
-    );
+    try {
+      await downloadCertificatePng({
+        certificate_id: certificate.certificateId,
+        certificate_full_name: certificate.certificateFullName || certificate.student,
+        internship_title: certificate.internship,
+        company_name: certificate.company,
+        issue_date: certificate.issueDateRaw,
+        is_verified: true,
+      });
+    } catch (err) {
+      alert(err.message || "Unable to generate certificate PNG.");
+    }
   };
 
   /*

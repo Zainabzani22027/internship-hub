@@ -14,6 +14,7 @@ export const getCategories = async (req, res) => {
         id,
         name
       FROM categories
+      WHERE is_active = TRUE
       ORDER BY id ASC
       `
     );

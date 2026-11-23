@@ -8,16 +8,45 @@ import {
   FiShield,
 } from "react-icons/fi";
 
-import { apiGet } from "../../utils/api";
+import { apiGet, apiPut } from "../../utils/api";
+import { downloadCertificatePng } from "../../utils/certificatePng";
 
 function Certificates() {
   const [certificates, setCertificates] = useState([]);
+  const [completedApplications, setCompletedApplications] = useState([]);
+  const [nameInputs, setNameInputs] = useState({});
+  const [savingNameId, setSavingNameId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     loadCertificates();
+    loadCompletedApplications();
   }, []);
+
+  const loadCompletedApplications = async () => {
+    try {
+      const data = await apiGet("/certificates/student/completed-applications");
+      setCompletedApplications(data.applications || []);
+    } catch (err) {
+      console.error("Load completed internships error:", err);
+    }
+  };
+
+  const saveCertificateName = async (applicationId) => {
+    const fullName = String(nameInputs[applicationId] || "").trim();
+    if (!window.confirm(`Confirm this exact certificate name?\\n\\n${fullName}\\n\\nAfter saving, it cannot be changed.`)) return;
+    try {
+      setSavingNameId(applicationId);
+      await apiPut(`/certificates/student/name/${applicationId}`, { fullName });
+      await loadCompletedApplications();
+      alert("Your certificate name has been saved and locked.");
+    } catch (err) {
+      alert(err.message || "Unable to save certificate name.");
+    } finally {
+      setSavingNameId(null);
+    }
+  };
 
   const loadCertificates = async () => {
     try {
@@ -95,26 +124,19 @@ function Certificates() {
     return [];
   };
 
-  const handleDownload = (certificate) => {
-    const certificateUrl =
-      certificate.certificate_url ||
-      certificate.certificateUrl;
-
-    if (!certificateUrl) {
-      alert(
-        "Certificate file is not available yet."
-      );
+  const handleDownload = async (certificate) => {
+    if (!certificate.is_verified) {
+      alert("This certificate is revoked or not verified.");
       return;
     }
-
-    window.open(
-      certificateUrl,
-      "_blank",
-      "noopener,noreferrer"
-    );
+    try {
+      await downloadCertificatePng(certificate);
+    } catch (err) {
+      alert(err.message || "Unable to download certificate PNG.");
+    }
   };
 
-  const handleVerify = async (certificate) => {
+    const handleVerify = async (certificate) => {
     const certificateId =
       certificate.certificate_id ||
       certificate.id;
@@ -173,6 +195,47 @@ function Certificates() {
             through InternShip Hub.
           </p>
         </div>
+
+        {completedApplications.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900">Unlock Your Certificate</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Enter your full legal name exactly as it should appear on your certificate. Once saved, it is locked and cannot be edited.
+            </p>
+            <div className="mt-4 grid gap-4">
+              {completedApplications.map((item) => (
+                <div key={item.application_id} className="rounded-xl border border-slate-200 p-4">
+                  <p className="font-semibold text-slate-900">{item.internship_title}</p>
+                  <p className="text-sm text-slate-500">{item.company_name}</p>
+                  {item.certificate_id ? (
+                    <p className="mt-2 text-sm font-semibold text-emerald-700">Certificate issued · {item.certificate_id}</p>
+                  ) : item.certificate_full_name ? (
+                    <p className="mt-2 text-sm font-semibold text-emerald-700">Name locked: {item.certificate_full_name}. Your company can now issue the certificate.</p>
+                  ) : (
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        maxLength={160}
+                        value={nameInputs[item.application_id] || ""}
+                        onChange={(event) => setNameInputs((current) => ({ ...current, [item.application_id]: event.target.value }))}
+                        placeholder="Enter your full legal name"
+                        className="min-w-0 flex-1 rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingNameId === item.application_id || !String(nameInputs[item.application_id] || "").trim()}
+                        onClick={() => saveCertificateName(item.application_id)}
+                        className="rounded-lg bg-blue-600 px-5 py-3 font-semibold text-white disabled:opacity-50"
+                      >
+                        {savingNameId === item.application_id ? "Saving..." : "Confirm & Lock Name"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* =========================
             CERTIFICATE SUMMARY
@@ -561,8 +624,7 @@ function Certificates() {
                           </p>
 
                           <p className="mt-1 text-xs leading-5 text-[#64748B]">
-                            Scan the certificate QR code to verify its
-                            authenticity.
+Use the unique certificate ID to verify authenticity on InternShipHub.
                           </p>
                         </div>
 

@@ -8,6 +8,7 @@ import pool from "../config/db.js";
 |--------------------------------------------------------------------------
 */
 
+
 export const getPendingInternships = async (req, res) => {
   try {
     const result = await pool.query(
@@ -46,9 +47,7 @@ export const getPendingInternships = async (req, res) => {
       INNER JOIN categories cat
         ON i.category_id = cat.id
 
-      WHERE i.approval_status = 'PENDING'
-
-      ORDER BY i.created_at ASC
+      ORDER BY i.created_at DESC
       `
     );
 
@@ -59,17 +58,17 @@ export const getPendingInternships = async (req, res) => {
     });
   } catch (error) {
     console.error(
-      "Get pending internships error:",
+      "Get admin internships error:",
       error
     );
 
     return res.status(500).json({
       success: false,
-      message:
-        "Unable to get pending internships.",
+      message: "Unable to get internships.",
     });
   }
 };
+
 
 /*
 |--------------------------------------------------------------------------

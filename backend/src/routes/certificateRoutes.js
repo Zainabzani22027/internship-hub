@@ -3,6 +3,8 @@ import express from "express";
 import {
   issueCertificate,
   getStudentCertificates,
+  getStudentCompletedApplications,
+  saveCertificateFullName,
   verifyCertificate,
 } from "../controllers/certificateController.js";
 
@@ -40,6 +42,20 @@ router.get(
   protect,
   authorize("STUDENT"),
   getStudentCertificates
+);
+
+router.get(
+  "/student/completed-applications",
+  protect,
+  authorize("STUDENT"),
+  getStudentCompletedApplications
+);
+
+router.put(
+  "/student/name/:applicationId",
+  protect,
+  authorize("STUDENT"),
+  saveCertificateFullName
 );
 
 

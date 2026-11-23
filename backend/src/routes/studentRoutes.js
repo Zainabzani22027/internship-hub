@@ -7,9 +7,12 @@ import {
 
 import {
   uploadStudentCV,
+  uploadStudentProfileImage,
 } from "../controllers/fileController.js";
 
-import uploadCV from "../middleware/uploadMiddleware.js";
+import uploadCV, {
+  uploadImage,
+} from "../middleware/uploadMiddleware.js";
 
 import {
   protect,
@@ -56,6 +59,14 @@ router.post(
   authorize("STUDENT"),
   uploadCV.single("cv"),
   uploadStudentCV
+);
+
+router.post(
+  "/profile/image",
+  protect,
+  authorize("STUDENT"),
+  uploadImage.single("image"),
+  uploadStudentProfileImage
 );
 
 export default router;

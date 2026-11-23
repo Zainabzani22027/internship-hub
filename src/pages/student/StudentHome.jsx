@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   FaArrowRight,
   FaBookmark,
@@ -11,26 +12,53 @@ import {
   FaMapMarkerAlt,
   FaUser,
 } from "react-icons/fa";
+import { apiGet } from "../../utils/api";
 
 function StudentHome() {
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchApps = async () => {
+      try {
+        const data = await apiGet("/applications/student");
+        setApplications(data.applications || []);
+      } catch (err) {
+        console.log("Dashboard apps error", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchApps();
+  }, []);
+
+  const totalApps = applications.length;
+  const underReview = applications.filter(
+    (a) => a.status === "UNDER_REVIEW" || a.status === "PENDING" || a.status === "APPLIED"
+  ).length;
+  const shortlisted = applications.filter(
+    (a) => a.status === "SHORTLISTED"
+  ).length;
+  const recentApps = applications.slice(0, 3);
+
   const statistics = [
     {
       title: "Applications",
-      value: "0",
+      value: loading ? "..." : totalApps,
       description: "Total applications",
       icon: <FaFileAlt />,
       iconStyle: "bg-blue-50 text-[#2563EB]",
     },
     {
       title: "Under Review",
-      value: "0",
+      value: loading ? "..." : underReview,
       description: "Being reviewed",
       icon: <FaClock />,
       iconStyle: "bg-amber-50 text-amber-600",
     },
     {
       title: "Shortlisted",
-      value: "0",
+      value: loading ? "..." : shortlisted,
       description: "Great progress",
       icon: <FaCheckCircle />,
       iconStyle: "bg-green-50 text-green-600",
@@ -44,38 +72,8 @@ function StudentHome() {
     },
   ];
 
-  const recommendedInternships = [
-    {
-      id: 1,
-      title: "Software Engineering Intern",
-      company: "TechNova Solutions",
-      location: "Remote",
-      mode: "Remote",
-      duration: "3 Months",
-      type: "Paid",
-      icon: "💻",
-    },
-    {
-      id: 2,
-      title: "AI / Machine Learning Intern",
-      company: "Future AI Labs",
-      location: "Hybrid",
-      mode: "Hybrid",
-      duration: "4 Months",
-      type: "Paid",
-      icon: "🤖",
-    },
-    {
-      id: 3,
-      title: "Cyber Security Intern",
-      company: "SecureNet Technologies",
-      location: "Remote",
-      mode: "Remote",
-      duration: "3 Months",
-      type: "Unpaid",
-      icon: "🛡️",
-    },
-  ];
+  const recommendedInternships = [];
+
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -180,129 +178,6 @@ function StudentHome() {
 
         <div className="space-y-8">
 
-          {/* Recommended Internships */}
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-
-            <div className="flex items-center justify-between gap-4">
-
-              <div>
-                <h2 className="text-xl font-extrabold text-[#0F172A]">
-                  Recommended Internships
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Opportunities you may be interested in.
-                </p>
-              </div>
-
-              <Link
-                to="/student/internships"
-                className="hidden items-center gap-2 text-sm font-bold text-[#2563EB] sm:flex"
-              >
-                View All
-                <FaArrowRight />
-              </Link>
-
-            </div>
-
-            <div className="mt-6 space-y-4">
-
-              {recommendedInternships.map((internship) => (
-
-                <div
-                  key={internship.id}
-                  className="rounded-2xl border border-slate-200 p-5 transition hover:border-blue-200 hover:shadow-md"
-                >
-
-                  <div className="flex flex-col justify-between gap-5 md:flex-row md:items-start">
-
-                    <div className="flex gap-4">
-
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xl">
-                        {internship.icon}
-                      </div>
-
-                      <div>
-
-                        <Link
-                          to={`/student/internships/${internship.id}`}
-                          className="font-bold text-[#0F172A] transition hover:text-[#2563EB]"
-                        >
-                          {internship.title}
-                        </Link>
-
-                        <p className="mt-1 text-sm font-medium text-slate-500">
-                          {internship.company}
-                        </p>
-
-                        <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
-
-                          <span className="flex items-center gap-1">
-                            <FaMapMarkerAlt />
-                            {internship.location}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <FaCalendarAlt />
-                            {internship.duration}
-                          </span>
-
-                          <span className="flex items-center gap-1">
-                            <FaBriefcase />
-                            {internship.mode}
-                          </span>
-
-                        </div>
-
-                      </div>
-
-                    </div>
-
-                    <div className="flex items-center gap-2">
-
-                      <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                          internship.type === "Paid"
-                            ? "bg-green-50 text-green-600"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {internship.type}
-                      </span>
-
-                      <button
-                        type="button"
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-blue-200 hover:text-[#2563EB]"
-                        aria-label="Save internship"
-                      >
-                        <FaBookmark />
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                  <div className="mt-5 border-t border-slate-100 pt-4">
-
-                    <Link
-                      to={`/student/internships/${internship.id}`}
-                      className="inline-flex items-center gap-2 text-sm font-bold text-[#2563EB]"
-                    >
-                      View Details
-                      <FaArrowRight />
-                    </Link>
-
-                  </div>
-
-                </div>
-
-              ))}
-
-            </div>
-
-          </section>
-
           {/* Applications */}
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -328,31 +203,49 @@ function StudentHome() {
 
             </div>
 
-            {/* Empty state because no real database yet */}
-
-            <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-[#F8FAFC] px-6 py-10 text-center">
-
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-xl text-[#2563EB]">
-                <FaFileAlt />
+            {loading ? (
+              <p className="mt-6 text-center text-sm text-slate-500">Loading...</p>
+            ) : recentApps.length === 0 ? (
+              <div className="mt-6 rounded-2xl border border-dashed border-slate-200 bg-[#F8FAFC] px-6 py-10 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-xl text-[#2563EB]">
+                  <FaFileAlt />
+                </div>
+                <h3 className="mt-4 font-bold text-[#0F172A]">
+                  No applications yet
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                  Once you apply for an internship, your application status
+                  will appear here.
+                </p>
+                <Link
+                  to="/student/internships"
+                  className="mt-5 inline-block rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-bold text-white"
+                >
+                  Find Internships
+                </Link>
               </div>
-
-              <h3 className="mt-4 font-bold text-[#0F172A]">
-                No applications yet
-              </h3>
-
-              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-                Once you apply for an internship, your application status
-                will appear here.
-              </p>
-
-              <Link
-                to="/student/internships"
-                className="mt-5 inline-block rounded-xl bg-[#2563EB] px-5 py-2.5 text-sm font-bold text-white"
-              >
-                Find Internships
-              </Link>
-
-            </div>
+            ) : (
+              <div className="mt-6 space-y-4">
+                {recentApps.map((app) => (
+                  <div
+                    key={app._id}
+                    className="flex items-center justify-between rounded-2xl border border-slate-200 p-4"
+                  >
+                    <div>
+                      <p className="font-bold text-[#0F172A]">
+                        {app.internship?.title || "Internship"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {app.internship?.company?.name || app.internship?.companyName || app.company?.name || ""}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-600">
+                      {app.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
           </section>
 

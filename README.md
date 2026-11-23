@@ -711,3 +711,20 @@ Army Burn Hall College, Affiliated with University of Peshawar
 2023–2027
 
 InternShip Hub — Full-Stack Internship Marketplace
+
+
+## Certificate completion and PNG name-lock update (17 Nov 2026)
+
+Before using the updated certificate workflow, run this migration once on the
+`internship_hub` PostgreSQL database:
+
+`backend/database/migrations/20261117_student_certificate_name_and_completion.sql`
+
+Workflow:
+1. A company marks a selected student's internship as completed from Company > Applications.
+2. The student opens Student > Certificates, enters their full legal name, reviews it, and confirms. The name is stored separately on the application and cannot be edited after confirmation.
+3. The company can issue the certificate only after completion and name confirmation.
+4. Student, company, and admin dashboards generate a downloadable PNG using the locked name and certificate details. The PNG is generated in the browser when downloaded; no persistent image-storage service is configured in this project.
+5. A revoked certificate cannot be downloaded as an active certificate.
+
+The internship posting success screen now redirects automatically to Company > Manage Internships after 2.5 seconds.

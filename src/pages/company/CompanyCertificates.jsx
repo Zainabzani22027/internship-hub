@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { apiGet, apiPost } from "../../utils/api";
+import { downloadCertificatePng } from "../../utils/certificatePng";
 
 function CompanyCertificates() {
   const [students, setStudents] = useState([]);
@@ -44,9 +45,7 @@ function CompanyCertificates() {
       const selectedApplications =
         applications.filter((application) => {
           return (
-            String(
-              application.status || ""
-            ).toUpperCase() === "SELECTED"
+            String(application.status || "").toUpperCase() === "SELECTED"
           );
         });
 
@@ -58,6 +57,7 @@ function CompanyCertificates() {
             applicationId:
               application.id,
 
+            certificateFullName: application.certificate_full_name || "",
             name:
               application.student_name ||
               application.studentName ||
@@ -83,13 +83,18 @@ function CompanyCertificates() {
               application.completedAt ||
               "Not specified",
 
-            status: "Eligible",
+            completedAt: application.internship_completed_at || null,
+            certificateFullName: application.certificate_full_name || "",
+            status: application.certificate_id ? "Certificate Issued" : (application.internship_completed_at ? "Name Confirmation Required" : "Awaiting Completion"),
 
             certificateId:
               application.certificate_id ||
               application.certificateId ||
               "",
             
+            companyName: application.company_name || "",
+            issueDate: application.issue_date || null,
+            isVerified: application.is_verified === true || application.is_verified === "true",
             certificateUrl:
               application.certificate_url ||
               application.certificateUrl ||
@@ -119,6 +124,11 @@ function CompanyCertificates() {
     try {
       setIssuingId(applicationId);
       setError("");
+
+      const selectedStudent = students.find((student) => student.applicationId === applicationId);
+      if (!selectedStudent?.completedAt || !selectedStudent?.certificateFullName) {
+        throw new Error("Student must complete the internship and lock their full name before certificate issuance.");
+      }
 
       const data = await apiPost(
         `/certificates/issue/${applicationId}`
@@ -191,43 +201,27 @@ function CompanyCertificates() {
       );
     });
 
-  const viewCertificate = (student) => {
-    if (student.certificateUrl) {
-      window.open(
-        student.certificateUrl,
-        "_blank",
-        "noopener,noreferrer"
-      );
+  const viewCertificate = async (student) => {
+    if (!student.certificateId) return;
+    if (!student.isVerified) {
+      alert("This certificate is revoked or not verified.");
       return;
     }
-
-    alert(
-      `Certificate ${student.certificateId} can be verified using the certificate ID.`
-    );
-  };
-
-  const downloadCertificate = (student) => {
-    if (student.certificateUrl) {
-      const link =
-        document.createElement("a");
-
-      link.href =
-        student.certificateUrl;
-
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      return;
+    try {
+      await downloadCertificatePng({
+        certificate_id: student.certificateId,
+        certificate_full_name: student.certificateFullName,
+        internship_title: student.internship,
+        company_name: student.companyName,
+        issue_date: student.issueDate,
+        is_verified: student.isVerified,
+      });
+    } catch (err) {
+      alert(err.message || "Unable to generate certificate PNG.");
     }
-
-    alert(
-      "Certificate file is not available yet. You can verify it using the certificate ID."
-    );
   };
+
+  const downloadCertificate = (student) => viewCertificate(student);
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
@@ -384,6 +378,9 @@ function CompanyCertificates() {
                             </span>{" "}
                             {student.completionDate}
                           </p>
+                          <p className="mt-2 text-xs text-slate-600">
+                            Student-confirmed certificate name: <strong>{student.certificateFullName || "Not confirmed yet"}</strong>
+                          </p>
 
                           <p className="sm:col-span-2">
                             <span className="font-semibold text-slate-600">
@@ -398,8 +395,7 @@ function CompanyCertificates() {
 
                     {/* Actions */}
                     <div className="flex flex-wrap gap-2 lg:justify-end">
-                      {student.status ===
-                      "Eligible" ? (
+                      {student.completedAt && student.certificateFullName && student.status !== "Certificate Issued" ? (
                         <button
                           type="button"
                           disabled={
